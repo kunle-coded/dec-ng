@@ -2,6 +2,8 @@
 
 pragma solidity ^0.8.27;
 
+import "./Election.sol";
+
 /**
  * @title DEC-NG Voting DApp
  * @author Adekunle Adesokan
@@ -14,57 +16,33 @@ pragma solidity ^0.8.27;
 // Responsible for authorizing and deploying individual election contracts.
 
 contract DEC {
-
-    enum Office { President, Governor, Senator, Representative, Chairman, Councillor }
-    enum Region { North, South, East, West }
-    mapping (uint256 => Candidate) private candidates;
-    mapping (string => uint256) private candidateToVotes;
-    mapping (string => bool) public allowedParty;
     mapping (uint256 => address) public addressToAdmins;
+    mapping (address => bool) public isAdmin;
     uint256 public adminCount;
-    address public admin;
     address public owner;
+    bool public activeElection = false;
 
-    Party [] public partyList;
-    Candidate [] public candidateList;
+    Election public newElection;
+    Election[] public elections;
 
-    struct Party {
-        string name;
-        string acronym;
-    }
-    
-    struct Candidate {
-        uint256 candidateId;
-        string name;
-        string dateOfBirth;
-        Party politicalParty;
-        Office office;
-        Region region;
-        string politicalExperience;
-        string education;
-        string professionalExperience;
-        string goalsPromises;
-        string vision;
-        string pastAchievements;
 
+
+    modifier onlyAdmin () {
+        require(isAdmin[msg.sender] || msg.sender == owner, "Unauthorized!");
+        _;
     }
 
-
-    modifier OnlyAdmin () {
-        require(msg.sender == admin || msg.sender == owner, "Unauthorized!");
+    modifier onlyActiveElection(){
+        require(activeElection, "No active election");
         _;
     }
 
    /**
     * @dev Constructor
     * @notice Initializes the contract
-    * @param _admin the address of the contract admin
     */
-    constructor (address _admin) {
-        require(_admin != address(0), "Invalid address");
-        admin = _admin;
-        owner = address(this);
-
+    constructor () {
+        owner = msg.sender;
     }
 
     /**
@@ -72,10 +50,10 @@ contract DEC {
      * @dev Increment admin counter
      * @param _adminAddress Address of admin to add
      */
-    function addAdmin(address _adminAddress) public {
-        require(msg.sender == owner);
+    function addAdmin(address _adminAddress) public onlyAdmin {
         require(_adminAddress != address(0), "Invalid address");
          addressToAdmins[adminCount] = _adminAddress;
+         isAdmin[_adminAddress] = true;
 
          adminCount++;
     }
@@ -93,6 +71,23 @@ contract DEC {
         return admins;
     }
 
+    /**
+     * @dev Create a new election
+     */
+    function createElection() public onlyAdmin {
+        require(!activeElection, "There is an active election");
+        
+        activeElection = true;
+         newElection = new Election(activeElection);
+        elections.push(newElection);  
+    }
 
-   
+    /**
+     * @dev End current elections
+     */
+    function endElection () public onlyAdmin onlyActiveElection {
+        // end active election;
+        newElection.endElection(activeElection);
+        activeElection = false;
+    }
 }

@@ -11,9 +11,10 @@ contract Election {
     enum Office { President, Governor, Senator, Representative, Chairman, Councillor }
     enum Region { North, South, East, West }
     mapping (string => bool) public allowedParty;
-    mapping (string => bool) public votersToVoted;
+    mapping (address => bool) public walletHasVoted;
+    mapping (string => bool) public deviceHasVoted;
     mapping (uint256 => uint256) public candidateToVotes;
-    bool public votingStarted = false;
+    bool public electionActive;
 
     Party [] public partyList;
     Candidate [] public candidateList;
@@ -42,25 +43,17 @@ contract Election {
     /**
      * @dev restric activity (function call) to voting period
      */
-    modifier votingPeriod(){
-        require(votingStarted == true, "Voting has ended");
+    modifier onlyWhenActive(){
+        require(electionActive, "Voting has ended");
         _;
-    }
-
-    /**
-     * @dev ensure only voter who has not voted before can vote
-     */
-    modifier onlyNotVoted(string calldata _voter){
-      require(!votersToVoted[_voter], "You already voted");
-      _;
     }
 
      /**
     * @dev Constructor
     * @notice Initializes the contract
     */
-    constructor () {
-        votingStarted = true;
+    constructor (bool _electionActive) {
+        electionActive = _electionActive;
     }
 
 
@@ -69,7 +62,7 @@ contract Election {
      * @param _name Party name
      * @param _acronym Party acronym
      */
-    function registerParty(string memory _name, string memory _acronym) public votingPeriod {
+    function registerParty(string memory _name, string memory _acronym) public onlyWhenActive {
         require(!allowedParty[_acronym], "Party already exist");
     
         partyList.push(Party({name: _name, acronym: _acronym}));
@@ -91,7 +84,7 @@ contract Election {
      * @param _vision candidate vision
      * @param _pastAchievement candidate past achievements
      */
-    function registerCandidate(string memory _name, string memory _dateOfBirth, string memory _partyName, string memory _partyAcronym, Office _office, Region _region, string memory _politicalExperience, string memory _education, string memory _professionalExperience, string memory _goalsAndPromises, string memory _vision, string memory _pastAchievement) public votingPeriod {
+    function registerCandidate(string memory _name, string memory _dateOfBirth, string memory _partyName, string memory _partyAcronym, Office _office, Region _region, string memory _politicalExperience, string memory _education, string memory _professionalExperience, string memory _goalsAndPromises, string memory _vision, string memory _pastAchievement) public onlyWhenActive {
 
         require(allowedParty[_partyAcronym], "Invalid party");
 
@@ -110,16 +103,34 @@ contract Election {
         pastAchievements: _pastAchievement
         });
 
-        // candidates[candidateList.length] = newCandidate;
         candidateList.push(newCandidate);
+    }
+
+    /**
+     * @dev Find a candidate from candidateList
+     * @param _candidateId id of candidate to find
+     */
+    function getCandidate(uint256 _candidateId) public view returns(Candidate memory) {
+        Candidate memory candidate;
+        bool found = false;
+
+        for(uint256 i = 0; i < candidateList.length; i++){
+            if(candidateList[i].candidateId == _candidateId){
+                candidate = candidateList[i];
+                found = true;
+            }
+        }
+
+        require(found, "Candidate not found");
+        return candidate;
     }
 
 
     /**
-     * @dev Get details of a candidate
+     * @dev Get details of all candidates
      * @param _name Candidate name
      */
-    function getCandidate(string calldata _name) public view returns(Candidate memory){
+    function getAllCandidates(string calldata _name) public view onlyWhenActive returns(Candidate memory){
         // return candidate
         Candidate memory calledCandidate;
         bool found = false;
@@ -140,34 +151,32 @@ contract Election {
         /**
          * @dev Vote a candidate
          * @param _candidateId Id of candidate to vote
-         * @param _voter identifier of voter
+         * @param _voterId identifier of voter
          */
-        function vote(uint256 _candidateId, string calldata _voter) public votingPeriod onlyNotVoted(_voter) {
+        function vote(uint256 _candidateId, string calldata _voterId) public onlyWhenActive {
+            if (msg.sender != address(0)) {
+                require(!walletHasVoted[msg.sender], "You have already voted");
+                walletHasVoted[msg.sender] = true;
+            }else {
+                require(deviceHasVoted[_voterId], "You have already voted");
+                deviceHasVoted[_voterId] = true;
+            }
+
             candidateToVotes[_candidateId] += 1;
-            votersToVoted[_voter] = true;
+            string memory candiateName = getCandidate(_candidateId).name;
+            emit Vote(candiateName, candidateToVotes[_candidateId]);
         }
 
 
-    /**
-     * 
-        allowedParty["A"] = true;
-        allowedParty["AA"] = true;
-        allowedParty["AAC"] = true;
-        allowedParty["ADC"] = true;
-        allowedParty["ADP"] = true;
-        allowedParty["APC"] = true;
-        allowedParty["APGA"] = true;
-        allowedParty["APM"] = true;
-        allowedParty["APP"] = true;
-        allowedParty["BP"] = true;
-        allowedParty["LP"] = true;
-        allowedParty["NRM"] = true;
-        allowedParty["NNPP"] = true;
-        allowedParty["PDP"] = true;
-        allowedParty["PRP"] = true;
-        allowedParty["SDP"] = true;
-        allowedParty["YPP"] = true;
-        allowedParty["YP"] = true;
-        allowedParty["ZLP"] = true;
-     */
+        /**
+         * @dev End election and render contract inactive
+         */
+        function endElection(bool _electionActive) public onlyWhenActive {
+            electionActive = _electionActive;
+        }
+
+        event Vote(string indexed _candidateName, uint256 _votes);
+
+
+         
 }
